@@ -1081,7 +1081,6 @@ redis_parse_req(struct msg *r)
                     break;
                 }
 
-
                 break;
 
             case 13:
@@ -1126,6 +1125,8 @@ redis_parse_req(struct msg *r)
                     r->type = MSG_REQ_REDIS_GEORADIUSBYMEMBER;
                     break;
                 }
+
+                break;
 
             default:
                 break;
@@ -1757,6 +1758,7 @@ redis_parse_rsp(struct msg *r)
     struct mbuf *b;
     uint8_t *p, *m;
     uint8_t ch;
+	uint32_t depth;
 
     enum {
         SW_START,
@@ -1971,7 +1973,12 @@ redis_parse_rsp(struct msg *r)
         case SW_SIMPLE:
             if (ch == CR) {
               state = SW_MULTIBULK_ARGN_LF;
-              r->rnarg--;
+              depth = r->rmdepth;
+              while (depth > 0) {
+                depth--;
+                if (r->rmnarg[depth] > 0) r->rmnarg[depth]--;
+                if (r->rmnarg[depth] != 0 || depth == 0) break;
+              }
             }
             break;
 
@@ -2087,17 +2094,25 @@ redis_parse_rsp(struct msg *r)
                 r->token = p;
                 /* rsp_start <- p */
                 r->narg_start = p;
-                r->rnarg = 0;
+                if (r->rmdepth >= NC_MULTIBULK_DEPTH) {
+                    /* the reply depth exceeds the hardcoded limit */
+                    goto error;
+                }
+                r->rmnarg[r->rmdepth++] = 0;
             } else if (ch == '-') {
-                state = SW_RUNTO_CRLF;
+                state = SW_SIMPLE;
+                r->token = NULL;
             } else if (isdigit(ch)) {
-                r->rnarg = r->rnarg * 10 + (uint32_t)(ch - '0');
+                uint32_t *narg = r->rmnarg + r->rmdepth - 1;
+                *narg = (*narg) * 10 + (uint32_t)(ch - '0');
             } else if (ch == CR) {
                 if ((p - r->token) <= 1) {
                     goto error;
                 }
 
-                r->narg = r->rnarg;
+                if (r->rmdepth == 1) {
+                    r->narg = r->rmnarg[0];
+                }
                 r->narg_end = p;
                 r->token = NULL;
                 state = SW_MULTIBULK_NARG_LF;
@@ -2110,7 +2125,16 @@ redis_parse_rsp(struct msg *r)
         case SW_MULTIBULK_NARG_LF:
             switch (ch) {
             case LF:
-                if (r->rnarg == 0) {
+                depth = r->rmdepth - 1;
+                if (r->rmnarg[depth] == 0) {
+                    r->rmdepth--;
+                    if (r->rmdepth > 0) {
+                        depth = r->rmdepth - 1;
+                        r->rmnarg[depth]--;
+                    }
+                }
+
+                if (r->rmnarg[0] == 0) {
                     /* response is '*0\r\n' */
                     goto done;
                 }
@@ -2174,7 +2198,8 @@ redis_parse_rsp(struct msg *r)
             } else if (ch == '-') {
                 ;
             } else if (ch == CR) {
-                if ((p - r->token) <= 1 || r->rnarg == 0) {
+                if ((p - r->token) <= 1 || 
+                    (r->rmdepth > 0 && r->rmnarg[r->rmdepth - 1] == 0)) {
                     goto error;
                 }
 
@@ -2184,7 +2209,13 @@ redis_parse_rsp(struct msg *r)
                 } else {
                     state = SW_MULTIBULK_ARGN_LEN_LF;
                 }
-                r->rnarg--;
+
+                depth = r->rmdepth;
+                while (depth > 0) {
+                    depth--;
+                    if (r->rmnarg[depth] > 0) r->rmnarg[depth]--;
+                    if (r->rmnarg[depth] != 0 || depth == 0) break;
+                }
                 r->token = NULL;
             } else {
                 goto error;
@@ -2227,10 +2258,16 @@ redis_parse_rsp(struct msg *r)
         case SW_MULTIBULK_ARGN_LF:
             switch (ch) {
             case LF:
-                if (r->rnarg == 0) {
+                if (r->rmnarg[0] == 0) {
                     goto done;
                 }
 
+                depth = r->rmdepth;
+                while (depth > 0) {
+                    depth--;
+                    if (r->rmnarg[depth] != 0 || depth == 0) break;
+                    r->rmdepth--;
+                }
                 state = SW_MULTIBULK_ARGN_LEN;
                 break;
 

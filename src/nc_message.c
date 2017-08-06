@@ -270,6 +270,8 @@ done:
     msg->swallow = 0;
     msg->redis = 0;
 
+    memset(msg->rmnarg, 0, sizeof(msg->rmnarg));
+    msg->rmdepth = 0;
     return msg;
 }
 
