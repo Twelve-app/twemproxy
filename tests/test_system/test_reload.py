@@ -59,7 +59,7 @@ def send_cmd(s, req, resp):
 
 @with_setup(_setup, _teardown)
 def test_reload_with_old_conf():
-    if nc.version() < '0.4.2':
+    if nc.version() < '0.5.1':
         print 'Ignore test_reload for version %s' % nc.version()
         return
     pid = nc.pid()
