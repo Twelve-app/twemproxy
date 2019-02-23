@@ -45,6 +45,9 @@
 #define NC_MBUF_MIN_SIZE    MBUF_MIN_SIZE
 #define NC_MBUF_MAX_SIZE    MBUF_MAX_SIZE
 
+#define NC_MBUF_MIN_NUM     MBUF_MIN_NUM
+#define NC_MBUF_MAX_NUM     MBUF_MAX_NUM
+
 static int show_help;
 static int show_version;
 static int test_conf;
@@ -65,10 +68,11 @@ static struct option long_options[] = {
     { "stats-addr",     required_argument,  NULL,   'a' },
     { "pid-file",       required_argument,  NULL,   'p' },
     { "mbuf-size",      required_argument,  NULL,   'm' },
+    { "mbuf-number",    required_argument,  NULL,   'n' },
     { NULL,             0,                  NULL,    0  }
 };
 
-static char short_options[] = "hVtdDv:o:c:s:i:a:p:m:";
+static char short_options[] = "hVtdDv:o:c:s:i:a:p:m:n:";
 
 static rstatus_t
 nc_daemonize(int dump_core)
@@ -205,6 +209,7 @@ nc_show_usage(void)
         "Usage: nutcracker [-?hVdDt] [-v verbosity level] [-o output file]" CRLF
         "                  [-c conf file] [-s stats port] [-a stats addr]" CRLF
         "                  [-i stats interval] [-p pid file] [-m mbuf size]" CRLF
+        "                  [-n mbuf number]" CRLF
         "");
     log_stderr(
         "Options:" CRLF
@@ -222,6 +227,7 @@ nc_show_usage(void)
         "  -i, --stats-interval=N : set stats aggregation interval in msec (default: %d msec)" CRLF
         "  -p, --pid-file=S       : set pid file (default: %s)" CRLF
         "  -m, --mbuf-size=N      : set size of mbuf chunk in bytes (default: %d bytes)" CRLF
+        "  -n, --mbuf-number=N    : set maximum number of mbuf chunks (default: 0, means no limit)" CRLF
         "",
         NC_LOG_DEFAULT, NC_LOG_MIN, NC_LOG_MAX,
         NC_LOG_PATH != NULL ? NC_LOG_PATH : "stderr",
@@ -296,6 +302,7 @@ nc_set_default_options(struct instance *nci)
     nci->hostname[NC_MAXHOSTNAMELEN - 1] = '\0';
 
     nci->mbuf_chunk_size = NC_MBUF_SIZE;
+    nci->mbuf_chunk_max = 0;
 
     nci->pid = (pid_t)-1;
     nci->pid_filename = NULL;
@@ -403,6 +410,24 @@ nc_get_options(int argc, char **argv, struct instance *nci)
             }
 
             nci->mbuf_chunk_size = (size_t)value;
+            break;
+
+        case 'n':
+            value = nc_atoi(optarg, strlen(optarg));
+            if (value < 0) {
+                log_stderr("nutcracker: option -n requires a number");
+                return NC_ERROR;
+            }
+
+            if ((value != 0 && value < NC_MBUF_MIN_NUM) || 
+                 value > NC_MBUF_MAX_NUM) {
+                log_stderr("nutcracker: maximum number of mbuf chunks must be "
+                           "zero or between %zu and %zu", NC_MBUF_MIN_NUM, 
+                               NC_MBUF_MAX_NUM);
+                return NC_ERROR;
+            }
+
+            nci->mbuf_chunk_max = (size_t)value;
             break;
 
         case '?':

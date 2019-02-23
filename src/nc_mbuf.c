@@ -25,6 +25,7 @@ static struct mhdr free_mbufq; /* free mbuf q */
 
 static size_t mbuf_chunk_size; /* mbuf chunk size - header + data (const) */
 static size_t mbuf_offset;     /* mbuf offset in chunk (const) */
+static size_t mbuf_chunk_max;  /* maximum number of mbuf chunks */
 
 static struct mbuf *
 _mbuf_get(void)
@@ -122,6 +123,11 @@ mbuf_put(struct mbuf *mbuf)
 
     ASSERT(STAILQ_NEXT(mbuf, next) == NULL);
     ASSERT(mbuf->magic == MBUF_MAGIC);
+
+    if (mbuf_chunk_max != 0 && nfree_mbufq >= mbuf_chunk_max) {
+        mbuf_free(mbuf);
+        return;
+    }
 
     nfree_mbufq++;
     STAILQ_INSERT_HEAD(&free_mbufq, mbuf, next);
@@ -267,6 +273,7 @@ mbuf_init(struct instance *nci)
 
     mbuf_chunk_size = nci->mbuf_chunk_size;
     mbuf_offset = mbuf_chunk_size - MBUF_HSIZE;
+    mbuf_chunk_max = nci->mbuf_chunk_max;
 
     log_debug(LOG_DEBUG, "mbuf hsize %d chunk size %zu offset %zu length %zu",
               MBUF_HSIZE, mbuf_chunk_size, mbuf_offset, mbuf_offset);
