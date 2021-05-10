@@ -400,7 +400,7 @@ msg_put(struct msg *msg)
 }
 
 void
-msg_dump(struct msg *msg, int level)
+msg_dump(struct msg *msg, int level, msg_dump_format_t which_format)
 {
     struct mbuf *mbuf;
 
@@ -412,6 +412,10 @@ msg_dump(struct msg *msg, int level)
          "error %d (err %d)", msg->id, msg->request, msg->mlen, msg->type,
          msg->done, msg->error, msg->err);
 
+    if (which_format == MSG_DUMP_TEXT) {
+        loga("---MSG DUMP BEGIN---");
+    }
+
     STAILQ_FOREACH(mbuf, &msg->mhdr, next) {
         uint8_t *p, *q;
         long int len;
@@ -420,7 +424,20 @@ msg_dump(struct msg *msg, int level)
         q = mbuf->last;
         len = q - p;
 
-        loga_hexdump(p, len, "mbuf [%p] with %ld bytes of data", p, len);
+        switch (which_format) {
+            case MSG_DUMP_HEXA:
+                loga_hexdump(p, len, "mbuf [%p] with %ld bytes of data", p, len);
+                break;
+            case MSG_DUMP_TEXT:
+                loga("%.*s", len, p);
+                break;
+            default:
+                break;
+        }
+    }
+
+    if (which_format == MSG_DUMP_TEXT) {
+        loga("---MSG DUMP END---");
     }
 }
 
