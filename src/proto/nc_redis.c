@@ -1173,10 +1173,12 @@ redis_parse_req(struct msg *r)
                 r->rlen = r->rlen * 10 + (uint32_t)(ch - '0');
             } else if (ch == CR) {
                 if (r->rlen >= mbuf_data_size()) {
-                    log_error("parsed bad req %"PRIu64" of type %d with key "
+                    struct string *r_type = msg_type_string(r->type);
+                    log_error("parsed bad req %"PRIu64" of type %.*s with key "
                               "length %d that greater than or equal to maximum"
-                              " redis key length of %d", r->id, r->type,
+                              " redis key length of %d", r->id, r_type->len, r_type->data,
                               r->rlen, mbuf_data_size());
+                    msg_dump(r, LOG_ERR, MSG_DUMP_TEXT);
                     goto error;
                 }
                 if (r->rnarg == 0) {
